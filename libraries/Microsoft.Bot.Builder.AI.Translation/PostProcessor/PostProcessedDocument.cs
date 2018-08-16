@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.Bot.Builder.AI.Translation.PostProcessor;
+
 namespace Microsoft.Bot.Builder.AI.Translation
 {
     /// <summary>
@@ -13,13 +15,13 @@ namespace Microsoft.Bot.Builder.AI.Translation
         /// </summary>
         /// <param name="translatedDocument">Translated object to be post processed.</param>
         /// <param name="postProcessedMessage">The result message/translation after the post processing.</param>
-        public PostProcessedDocument(TranslatedDocument translatedDocument, string postProcessedMessage)
+        public PostProcessedDocument(ITranslatedDocument translatedDocument, string postProcessedMessage)
         {
             this.TranslatedDocument = translatedDocument;
             this.PostProcessedMessage = postProcessedMessage;
         }
 
-        public TranslatedDocument TranslatedDocument { get; set; }
+        public ITranslatedDocument TranslatedDocument { get; set; }
 
         public string PostProcessedMessage { get; set; }
     }

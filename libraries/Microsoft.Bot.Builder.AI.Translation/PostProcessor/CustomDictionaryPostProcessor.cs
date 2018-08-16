@@ -27,7 +27,7 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
         /// <param name="translatedDocument">Translated document.</param>
         /// <param name="languageId">Current source language id.</param>
         /// <returns>A <see cref="PostProcessedDocument"/> stores the original translated document state and the newly post processed message.</returns>
-        public PostProcessedDocument Process(TranslatedDocument translatedDocument, string languageId)
+        public PostProcessedDocument Process(ITranslatedDocument translatedDocument, string languageId)
         {
             // Check if provided custom dictionary for this language is not empty
             if (_userCustomDictionaries.GetLanguageDictionary(languageId).Count > 0)
@@ -37,19 +37,19 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
 
                 // Loop for all the original message tokens, and check if any of these tokens exists in the user custom dictionary,
                 // to forcibly overwrite this token's translation with the user provided translation
-                for (var i = 0; i < translatedDocument.SourceTokens.Length; i++)
+                for (var i = 0; i < translatedDocument.GetSourceTokens().Length; i++)
                 {
-                    if (languageDictionary.ContainsKey(translatedDocument.SourceTokens[i]))
+                    if (languageDictionary.ContainsKey(translatedDocument.GetSourceTokens()[i]))
                     {
                         // If a token of the original source message/phrase found in the user dictionary,
                         // replace it's equivalent translated token with the user provided translation
                         // the equivalent translated token can be found using the alignment map in the translated document
-                        translatedDocument.TranslatedTokens[translatedDocument.IndexedAlignment[i]] = languageDictionary[translatedDocument.SourceTokens[i]];
+                        translatedDocument.GetTranslatedTokens()[translatedDocument.GetIndexedAlignment()[i]] = languageDictionary[translatedDocument.GetSourceTokens()[i]];
                     }
                 }
 
                 // Finally return PostProcessedDocument object that holds the orignal TRanslatedDocument and a string that joins all the translated tokens together
-                processedResult = PostProcessingUtilities.Join(" ", translatedDocument.TranslatedTokens);
+                processedResult = PostProcessingUtilities.Join(" ", translatedDocument.GetTranslatedTokens());
                 return new PostProcessedDocument(translatedDocument, processedResult);
             }
             else

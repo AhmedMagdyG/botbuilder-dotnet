@@ -57,13 +57,13 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
         /// <param name="translatedDocument">Translated document.</param>
         /// <param name="languageId">Current source language id.</param>
         /// <returns>A <see cref="PostProcessedDocument"/> stores the original translated document state and the newly post processed message.</returns>
-        public PostProcessedDocument Process(TranslatedDocument translatedDocument, string languageId)
+        public PostProcessedDocument Process(ITranslatedDocument translatedDocument, string languageId)
         {
             // validate function arguments for null and incorrect format
             ValidateParameters(translatedDocument);
 
             // flag to indicate if the source message contains number , will used for
-            var containsNum = Regex.IsMatch(translatedDocument.SourceMessage, @"\d");
+            var containsNum = Regex.IsMatch(translatedDocument.GetSourceMessage(), @"\d");
 
             // output variable declaration
             string processedResult;
@@ -71,22 +71,22 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
             // temporary pattern is used to contain two set of patterns :
             //  - the post processed patterns that was configured by the user ie : _processedPatterns and
             //  - the   liternal no translate pattern ie : translatedDocument.LiteranlNoTranslatePhrases , which takes the following regx "<literal>(.*)</literal>" , so the following code checks if this pattern exists in the translated document object to be added to the no translate list
-            //  - ex : translatedDocument.sourceMessage = I like my friend <literal>happy</literal> , the literal tag here specifies that the word "happy" shouldn't be translated
+            //  - ex : translatedDocument.SourceMessage = I like my friend <literal>happy</literal> , the literal tag here specifies that the word "happy" shouldn't be translated
             var temporaryPatterns = _processedPatterns[languageId];
 
-            if (translatedDocument.LiteranlNoTranslatePhrases != null && translatedDocument.LiteranlNoTranslatePhrases.Count > 0)
+            if (translatedDocument.GetLiteranlNoTranslatePhrases() != null && translatedDocument.GetLiteranlNoTranslatePhrases().Count > 0)
             {
-                temporaryPatterns.UnionWith(translatedDocument.LiteranlNoTranslatePhrases);
+                temporaryPatterns.UnionWith(translatedDocument.GetLiteranlNoTranslatePhrases());
             }
 
             if (temporaryPatterns.Count == 0 && !containsNum)
             {
-                processedResult = translatedDocument.TargetMessage;
+                processedResult = translatedDocument.GetTranslatedMessage();
             }
 
-            if (string.IsNullOrWhiteSpace(translatedDocument.RawAlignment))
+            if (string.IsNullOrWhiteSpace(translatedDocument.GetRawAlignment()))
             {
-                processedResult = translatedDocument.TargetMessage;
+                processedResult = translatedDocument.GetTranslatedMessage();
             }
 
             // loop for all the patterns and substitute each no translate pattern match with the original source words
@@ -97,14 +97,14 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
             // after applying the patterns post processor , the output would be : "My name is l'etat"
             foreach (var pattern in temporaryPatterns)
             {
-                if (Regex.IsMatch(translatedDocument.SourceMessage, pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(translatedDocument.GetSourceMessage(), pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase))
                 {
                     SubstituteNoTranslatePattern(translatedDocument, pattern);
                 }
             }
 
             SubstituteNumericPattern(translatedDocument);
-            processedResult = PostProcessingUtilities.Join(" ", translatedDocument.TranslatedTokens);
+            processedResult = PostProcessingUtilities.Join(" ", translatedDocument.GetTranslatedTokens());
             return new PostProcessedDocument(translatedDocument, processedResult);
         }
 
@@ -113,10 +113,10 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
         /// </summary>
         /// <param name="translatedDocument">Translated document.</param>
         /// <param name="pattern">The no translate pattern.</param>
-        private void SubstituteNoTranslatePattern(TranslatedDocument translatedDocument, string pattern)
+        private void SubstituteNoTranslatePattern(ITranslatedDocument translatedDocument, string pattern)
         {
             // get the matched no translate pattern
-            var matchNoTranslate = Regex.Match(translatedDocument.SourceMessage, pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            var matchNoTranslate = Regex.Match(translatedDocument.GetSourceMessage(), pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
             // calculate the boundaries of the pattern match
             // ex : "mon nom est l'etat
@@ -131,9 +131,9 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
             var newChrLengthFromMatch = 0;
             var srcIndex = -1;
             var newNoTranslateArrayLength = 1;
-            var sourceMessageCharacters = translatedDocument.SourceMessage.ToCharArray();
+            var sourceMessageCharacters = translatedDocument.GetSourceMessage().ToCharArray();
 
-            foreach (var wrd in translatedDocument.SourceTokens)
+            foreach (var wrd in translatedDocument.GetSourceTokens())
             {
                 // if the beginning of the current word equals the beginning of the matched no trasnalate word, then assign the current word index to srcIndex
                 if (chrIndx == noTranslateStartChrIndex)
@@ -155,7 +155,7 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
                 if (srcIndex != -1)
                 {
                     // checks if we found all the tokens that matches the pattern
-                    if (newChrLengthFromMatch + translatedDocument.SourceTokens[wrdIndx].Length >= noTranslateMatchLength)
+                    if (newChrLengthFromMatch + translatedDocument.GetSourceTokens()[wrdIndx].Length >= noTranslateMatchLength)
                     {
                         break;
                     }
@@ -164,7 +164,7 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
                     newNoTranslateArrayLength += 1;
 
                     // increment newChrLengthFromMatch with the found word size
-                    newChrLengthFromMatch += translatedDocument.SourceTokens[wrdIndx].Length;
+                    newChrLengthFromMatch += translatedDocument.GetSourceTokens()[wrdIndx].Length;
                 }
 
                 // the following block of code is used to calculate the next token starting index which could have two cases
@@ -193,12 +193,12 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
 
             // add the no translate words to a new array
             var wrdNoTranslate = new string[newNoTranslateArrayLength];
-            Array.Copy(translatedDocument.SourceTokens, srcIndex, wrdNoTranslate, 0, newNoTranslateArrayLength);
+            Array.Copy(translatedDocument.GetSourceTokens(), srcIndex, wrdNoTranslate, 0, newNoTranslateArrayLength);
 
             // loop for each of the no translate words and replace it's translation with it's origin
             foreach (var srcWrd in wrdNoTranslate)
             {
-                translatedDocument.TranslatedTokens = PostProcessingUtilities.KeepSourceWordInTranslation(translatedDocument.IndexedAlignment, translatedDocument.SourceTokens, translatedDocument.TranslatedTokens, srcIndex);
+                translatedDocument.SetTranslatedTokens(PostProcessingUtilities.KeepSourceWordInTranslation(translatedDocument.GetIndexedAlignment(), translatedDocument.GetSourceTokens(), translatedDocument.GetTranslatedTokens(), srcIndex));
                 srcIndex++;
             }
         }
@@ -207,35 +207,35 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
         /// Substitute the numeric numbers in translated message with their orignal format in source message.
         /// </summary>
         /// <param name="translatedDocument">Translated document.</param>
-        private void SubstituteNumericPattern(TranslatedDocument translatedDocument)
+        private void SubstituteNumericPattern(ITranslatedDocument translatedDocument)
         {
-            var numericMatches = Regex.Matches(translatedDocument.SourceMessage, @"\d+", RegexOptions.Singleline);
+            var numericMatches = Regex.Matches(translatedDocument.GetSourceMessage(), @"\d+", RegexOptions.Singleline);
             foreach (Match numericMatch in numericMatches)
             {
-                var srcIndex = Array.FindIndex(translatedDocument.SourceTokens, row => row == numericMatch.Groups[0].Value);
-                translatedDocument.TranslatedTokens = PostProcessingUtilities.KeepSourceWordInTranslation(translatedDocument.IndexedAlignment, translatedDocument.SourceTokens, translatedDocument.TranslatedTokens, srcIndex);
+                var srcIndex = Array.FindIndex(translatedDocument.GetSourceTokens(), row => row == numericMatch.Groups[0].Value);
+                translatedDocument.SetTranslatedTokens(PostProcessingUtilities.KeepSourceWordInTranslation(translatedDocument.GetIndexedAlignment(), translatedDocument.GetSourceTokens(), translatedDocument.GetTranslatedTokens(), srcIndex));
             }
         }
 
         /// <summary>
-        /// Validate <see cref="TranslatedDocument"/> object main parameters for null values.
+        /// Validate <see cref="ITranslatedDocument"/> object main parameters for null values.
         /// </summary>
         /// <param name="translatedDocument">The document to validate.</param>
-        private void ValidateParameters(TranslatedDocument translatedDocument)
+        private void ValidateParameters(ITranslatedDocument translatedDocument)
         {
             if (translatedDocument == null)
             {
                 throw new ArgumentNullException(nameof(translatedDocument));
             }
 
-            if (translatedDocument.SourceMessage == null)
+            if (translatedDocument.GetSourceMessage() == null)
             {
-                throw new ArgumentNullException(nameof(translatedDocument.SourceMessage));
+                throw new ArgumentNullException(nameof(translatedDocument.GetSourceMessage));
             }
 
-            if (translatedDocument.TargetMessage == null)
+            if (translatedDocument.GetTranslatedMessage() == null)
             {
-                throw new ArgumentNullException(nameof(translatedDocument.TargetMessage));
+                throw new ArgumentNullException(nameof(translatedDocument.GetTranslatedMessage));
             }
         }
     }
