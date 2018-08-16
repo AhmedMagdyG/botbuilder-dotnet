@@ -24,6 +24,7 @@ namespace Microsoft.Bot.Builder.AI.Translation
         private IPreProcessor _preProcessor;
         private IRequestBuilder _requestBuilder;
         private IResponseGenerator _responseGenerator;
+        private List<IPostProcessor> attachedPostProcessors;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Translator"/> class.
@@ -43,7 +44,28 @@ namespace Microsoft.Bot.Builder.AI.Translation
             _preProcessor = new TranslatorPreProcessor();
             _requestBuilder = new TranslatorRequestBuilder(apiKey);
             _responseGenerator = new TranslatorResponseGenerator(httpClient);
+            attachedPostProcessors = new List<IPostProcessor>();
         }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Translator"/> class.
+        /// </summary>
+        /// <param name="apiKey">Your subscription key for the Microsoft Translator Text API.</param>
+        /// <param name="preProcessor">The PreProcessor to use.</param>"
+        /// <param name="requestBuilder">The RequestBuilder to use.</param>
+        /// <param name="responseGenerator">The ResponseBuilder to use.</param>
+        /// <param name="httpClient">An alternate HTTP client to use.</param>
+        /// <param name="patterns">List of regex patterns, indexed by language identifier,
+        /// that can be used to flag text that should not be translated.</param>
+        /// /// <param name="userCustomDictonaries">Custom languages dictionary object, used to store all the different languages dictionaries
+        /// configured by the user to overwrite the translator output to certain vocab by the custom dictionary translation.</param>
+        public Translator(string apiKey, Dictionary<string, List<string>> patterns, CustomDictionary userCustomDictonaries, HttpClient httpClient = null)
+            : this(apiKey, httpClient)
+        {
+            InitializePostProcessors(patterns, userCustomDictonaries);
+        }
+
+
 
         public async Task<string> DetectAsync(string textToDetect)
         {
@@ -58,24 +80,24 @@ namespace Microsoft.Bot.Builder.AI.Translation
             }
         }
 
-        public async Task<TranslatedDocument> TranslateAsync(string textToTranslate, string from, string to)
+        public async Task<ITranslatedDocument> TranslateAsync(string textToTranslate, string from, string to)
         {
             var results = await TranslateArrayAsync(new string[] { textToTranslate }, from, to).ConfigureAwait(false);
             return results.First();
         }
 
-        public async Task<List<TranslatedDocument>> TranslateArrayAsync(string[] translateArraySourceTexts, string from, string to)
+        public async Task<List<ITranslatedDocument>> TranslateArrayAsync(string[] translateArraySourceTexts, string from, string to)
         {
-            var translatedDocuments = new List<TranslatedDocument>();
+            var translatedDocuments = new List<ITranslatedDocument>();
             for (var srcTxtIndx = 0; srcTxtIndx < translateArraySourceTexts.Length; srcTxtIndx++)
             {
                 // Check for literal tag in input user message
                 var currentTranslatedDocument = new TranslatedDocument(translateArraySourceTexts[srcTxtIndx]);
                 translatedDocuments.Add(currentTranslatedDocument);
-                _preProcessor.PreprocessMessage(currentTranslatedDocument.SourceMessage, out var processedText, out var literanlNoTranslateList);
-                currentTranslatedDocument.SourceMessage = processedText;
+                _preProcessor.PreprocessMessage(currentTranslatedDocument.GetSourceMessage(), out var processedText, out var literanlNoTranslateList);
+                currentTranslatedDocument.SetSourceMessage(processedText);
                 translateArraySourceTexts[srcTxtIndx] = processedText;
-                currentTranslatedDocument.LiteranlNoTranslatePhrases = literanlNoTranslateList;
+                currentTranslatedDocument.SetLiteranlNoTranslatePhrases(literanlNoTranslateList);
             }
 
             // list of translation request for the service
@@ -88,30 +110,65 @@ namespace Microsoft.Bot.Builder.AI.Translation
                 {
                     var translation = translatedValue.Translations.First();
                     var currentTranslatedDocument = translatedDocuments[sentIndex];
-                    currentTranslatedDocument.RawAlignment = translation.Alignment?.Projection ?? null;
-                    currentTranslatedDocument.TargetMessage = translation.Text;
+                    currentTranslatedDocument.SetRawAlignment(translation.Alignment?.Projection ?? null);
+                    currentTranslatedDocument.SetTranslatedMessage(translation.Text);
 
-                    if (!string.IsNullOrEmpty(currentTranslatedDocument.RawAlignment))
+                    if (!string.IsNullOrEmpty(currentTranslatedDocument.GetRawAlignment()))
                     {
-                        var alignments = currentTranslatedDocument.RawAlignment.Trim().Split(' ');
-                        currentTranslatedDocument.SourceTokens = PostProcessingUtilities.SplitSentence(currentTranslatedDocument.SourceMessage, alignments);
-                        currentTranslatedDocument.TranslatedTokens = PostProcessingUtilities.SplitSentence(translation.Text, alignments, false);
-                        currentTranslatedDocument.IndexedAlignment = PostProcessingUtilities.WordAlignmentParse(alignments, currentTranslatedDocument.SourceTokens, currentTranslatedDocument.TranslatedTokens);
-                        currentTranslatedDocument.TargetMessage = PostProcessingUtilities.Join(" ", currentTranslatedDocument.TranslatedTokens);
+                        var alignments = currentTranslatedDocument.GetRawAlignment().Trim().Split(' ');
+                        currentTranslatedDocument.SetSourceTokens(PostProcessingUtilities.SplitSentence(currentTranslatedDocument.GetSourceMessage(), alignments));
+                        currentTranslatedDocument.SetTranslatedTokens(PostProcessingUtilities.SplitSentence(translation.Text, alignments, false));
+                        currentTranslatedDocument.SetIndexedAlignment(PostProcessingUtilities.WordAlignmentParse(alignments, currentTranslatedDocument.GetSourceTokens(), currentTranslatedDocument.GetTranslatedTokens()));
+                        currentTranslatedDocument.SetTranslatedMessage(PostProcessingUtilities.Join(" ", currentTranslatedDocument.GetTranslatedTokens()));
                     }
                     else
                     {
                         var translatedText = translation.Text;
-                        currentTranslatedDocument.TargetMessage = translatedText;
-                        currentTranslatedDocument.SourceTokens = new string[] { currentTranslatedDocument.SourceMessage };
-                        currentTranslatedDocument.TranslatedTokens = new string[] { currentTranslatedDocument.TargetMessage };
-                        currentTranslatedDocument.IndexedAlignment = new Dictionary<int, int>();
+                        currentTranslatedDocument.SetTranslatedMessage(translatedText);
+                        currentTranslatedDocument.SetSourceTokens(new string[] { currentTranslatedDocument.GetSourceMessage() });
+                        currentTranslatedDocument.SetTranslatedTokens(new string[] { currentTranslatedDocument.GetTranslatedMessage() });
+                        currentTranslatedDocument.SetIndexedAlignment(new Dictionary<int, int>());
                     }
 
                     sentIndex++;
                 }
 
+                // post process all translated documents
+                PostProcesseDocuments(translatedDocuments, from);
                 return translatedDocuments;
+            }
+        }
+
+        /// <summary>
+        /// Initialize attached post processors according to what the user sent in the middle ware constructor.
+        /// </summary>
+        private void InitializePostProcessors(Dictionary<string, List<string>> patterns, CustomDictionary userCustomDictonaries)
+        {
+            attachedPostProcessors = new List<IPostProcessor>();
+            if (patterns != null && patterns.Count > 0)
+            {
+                attachedPostProcessors.Add(new PatternsPostProcessor(patterns));
+            }
+
+            if (userCustomDictonaries != null && !userCustomDictonaries.IsEmpty())
+            {
+                attachedPostProcessors.Add(new CustomDictionaryPostProcessor(userCustomDictonaries));
+            }
+        }
+
+        /// <summary>
+        /// Applies all the attached post processors to the translated messages.
+        /// </summary>
+        /// <param name="translatedDocuments">List of <see cref="ITranslatedDocument"/> represent the output of the translator module.</param>
+        /// <param name="languageId">Current language id.</param>
+        private void PostProcesseDocuments(List<ITranslatedDocument> translatedDocuments, string languageId)
+        {
+            foreach (var translatedDocument in translatedDocuments)
+            {
+                foreach (var postProcessor in attachedPostProcessors)
+                {
+                    translatedDocument.SetTranslatedMessage(postProcessor.Process(translatedDocument, languageId).PostProcessedMessage);
+                }
             }
         }
     }
