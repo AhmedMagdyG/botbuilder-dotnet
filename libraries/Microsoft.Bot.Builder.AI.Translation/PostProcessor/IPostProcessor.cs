@@ -15,6 +15,6 @@ namespace Microsoft.Bot.Builder.AI.Translation.PostProcessor
         /// <param name="translatedDocument">Translated document.</param>
         /// <param name="languageId">Current source language id.</param>
         /// <returns><see cref="PostProcessedDocument"/> that holds the original document and the newly post processed message/phrease.</returns>
-        PostProcessedDocument Process(TranslatedDocument translatedDocument, string languageId);
+        PostProcessedDocument Process(ITranslatedDocument translatedDocument, string languageId);
     }
 }

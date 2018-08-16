@@ -24,7 +24,6 @@ namespace Microsoft.Bot.Builder.AI.Translation
         private readonly Dictionary<string, List<string>> _patterns;
         private readonly IStatePropertyAccessor<string> _languageStateProperty;
         private readonly bool _toUserLanguage;
-        private List<IPostProcessor> attachedPostProcessors;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TranslationMiddleware"/> class.
@@ -72,15 +71,7 @@ namespace Microsoft.Bot.Builder.AI.Translation
         public TranslationMiddleware(string[] nativeLanguages, string translatorKey, Dictionary<string, List<string>> patterns, CustomDictionary userCustomDictonaries, bool toUserLanguage = false, HttpClient httpClient = null, string defaultLocale = "en")
             : this(nativeLanguages, translatorKey, toUserLanguage, httpClient, defaultLocale)
         {
-            if (patterns != null)
-            {
-                this._patterns = patterns;
-            }
-
-            if (userCustomDictonaries != null)
-            {
-                this._userCustomDictonaries = userCustomDictonaries;
-            }
+            this._translator = new Translator(translatorKey, patterns, userCustomDictonaries, httpClient);
         }
 
         /// <summary>
@@ -190,44 +181,6 @@ namespace Microsoft.Bot.Builder.AI.Translation
         }
 
         /// <summary>
-        /// Initialize attached post processors according to what the user sent in the middle ware constructor.
-        /// </summary>
-        private void InitializePostProcessors()
-        {
-            attachedPostProcessors = new List<IPostProcessor>();
-            if (_patterns != null && _patterns.Count > 0)
-            {
-                attachedPostProcessors.Add(new PatternsPostProcessor(_patterns));
-            }
-
-            if (_userCustomDictonaries != null && !_userCustomDictonaries.IsEmpty())
-            {
-                attachedPostProcessors.Add(new CustomDictionaryPostProcessor(_userCustomDictonaries));
-            }
-        }
-
-        /// <summary>
-        /// Applies all the attached post processors to the translated messages.
-        /// </summary>
-        /// <param name="translatedDocuments">List of <see cref="TranslatedDocument"/> represent the output of the translator module.</param>
-        /// <param name="languageId">Current language id.</param>
-        private void PostProcesseDocuments(List<TranslatedDocument> translatedDocuments, string languageId)
-        {
-            if (attachedPostProcessors == null)
-            {
-                InitializePostProcessors();
-            }
-
-            foreach (var translatedDocument in translatedDocuments)
-            {
-                foreach (IPostProcessor postProcessor in attachedPostProcessors)
-                {
-                    translatedDocument.TargetMessage = postProcessor.Process(translatedDocument, languageId).PostProcessedMessage;
-                }
-            }
-        }
-
-        /// <summary>
         /// Translates the <see cref="Activity.Text"/> of a message.
         /// </summary>
         /// <param name="context">The current turn context.</param>
@@ -253,13 +206,10 @@ namespace Microsoft.Bot.Builder.AI.Translation
                     var text = message.Text;
                     string[] lines = text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
                     var translateResult = await this._translator.TranslateArrayAsync(lines, sourceLanguage, targetLanguage).ConfigureAwait(false);
-
-                    // post process all translated documents
-                    PostProcesseDocuments(translateResult, sourceLanguage);
                     text = string.Empty;
                     foreach (var translatedDocument in translateResult)
                     {
-                        text += string.Join("\n", translatedDocument.TargetMessage);
+                        text += string.Join("\n", translatedDocument.GetTranslatedMessage());
                     }
 
                     message.Text = text;

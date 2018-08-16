@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Bot.Builder.AI.Translation.PostProcessor;
 
 namespace Microsoft.Bot.Builder.AI.Translation
 {
@@ -24,7 +25,7 @@ namespace Microsoft.Bot.Builder.AI.Translation
         /// <param name="from">The language code of the translation text. For example, "en" for English.</param>
         /// <param name="to">The language code to translate the text into.</param>
         /// <returns>The translated document.</returns>
-        Task<TranslatedDocument> TranslateAsync(string textToTranslate, string from, string to);
+        Task<ITranslatedDocument> TranslateAsync(string textToTranslate, string from, string to);
 
         /// <summary>
         /// Translates an array of strings from a source language to a target language.
@@ -33,6 +34,6 @@ namespace Microsoft.Bot.Builder.AI.Translation
         /// <param name="from">The language code of the translation text. For example, "en" for English.</param>
         /// <param name="to">The language code to translate the text into.</param>
         /// <returns>An array of the translated documents.</returns>
-        Task<List<TranslatedDocument>> TranslateArrayAsync(string[] translateArraySourceTexts, string from, string to);
+        Task<List<ITranslatedDocument>> TranslateArrayAsync(string[] translateArraySourceTexts, string from, string to);
     }
 }
